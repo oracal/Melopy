@@ -1,8 +1,13 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-import wave, struct, random, math
-import os, sys 
+import os
+import sys
+import re
+import wave
+import struct
+import random
+import math
 
 class MelopyGenericError(Exception): pass
 class MelopyValueError(ValueError): pass
@@ -131,7 +136,9 @@ def genScale(scale, note, rType="list"): #scale, start, type
     if scale in scales:
         return scales[scale](note, rType) #Places each individual argument into function call
     else:
-        raise MelopyGenericError("Unknown scale type:"+str(scale))
+        raise MelopyGenericError("Unknown scale type:"+str(scale))    
+    
+        
 
 class Melopy:
     def __init__(self, title='sound', volume=50, tempo=120, octave=4):
@@ -253,6 +260,50 @@ class Melopy:
         
     def add_fractional_rest(self, fraction):
         self.add_rest(60.0 / self.tempo * (fraction * 4))
+        
+    def parse_rtttl(self,rtttl):
+        """add tones to the Melopy object from rtttl (Ring Tone Text Transfer Language) data"""
+        #split rtttl into its three parts and processes them
+        parts = rtttl.split(':')
+        self.title = parts[0]
+        [default_rtttl_duration, default_octave, tempo] = re.findall(r'\d+',parts[1])
+        self.tempo = int(tempo)
+        self.octave = int(default_octave)
+        
+        #retrieve note information from third part
+        rtttl_notes = re.findall('([A-Za-z0-9.#]+)',parts[2])        
+
+        for rtttl_note in rtttl_notes:
+            octave = None
+            rtttl_duration = None
+            
+            #find duration
+            rtttl_duration = re.search(r'^\d+',rtttl_note)
+            if rtttl_duration is None:
+                rtttl_duration = float(default_rtttl_duration)
+            else:
+                rtttl_duration=float(rtttl_duration.group(0))
+            duration = 60.0 / self.tempo / (rtttl_duration/4)
+                
+            #find note
+            note = re.search('([A-Za-z.#]+)',rtttl_note).group(0)
+            
+            #add 50% duration for dot notation
+            if note[-1]=='.':
+                note = note[:-1]
+                rtttl_duration=rtttl_duration*1.5
+                
+            #find octave
+            octave = re.search(r'\d+$',rtttl_note)
+            if octave is None:
+                octave = default_octave
+            else:
+                octave=octave.group(0)
+            #add note or rest to Melopy object
+            if note.lower()=='p':
+                self.add_rest(duration)
+            else:
+                self.add_note(note+octave, duration)
         
     def render(self):
         """Render a playable song out to a .wav file"""
